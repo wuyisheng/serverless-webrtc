@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>serverless webrtc</title>
+    <meta name="author" content="hello@yeshen.org">
+    <style type="text/css">
+    button { width: 80px; height: 44px;border: 1px solid #ccc;border-radius: 4px;}
+    video {display: inline-block;width: 192px;height: 108px;background-color: black;margin-top: 4px;}
+    </style>
+</head>
+<body>
+    <button onclick="connect()" tabindex="2">connect</button>
+    <button onclick="disconnect()" tabindex="3">disconnect</button>
+    <div id="media">
+        <video id="other_video" autoplay="true" playsinline="true"></video>
+        <video id="my_video" autoplay="true" playsinline="true"></video>
+    </div>
+</body>
+<script type="text/javascript">
+var pc;
+var offer_url = '/rtc/key/offer'
+var answer_url = '/rtc/key/answer'
+
+function connect(){
+  fetch(offer_url).then(res => res.text()).then(sdp => {
+    console.log('done fetch',offer_url,sdp);
+    if(sdp){
+      startFromOffer(sdp);
+    }else{
+      startWithoutOffer()
+    }
+  });
+}
+function disconnect(){
+  if(!pc)return;
+  if (pc.getTransceivers) {
+      pc.getTransceivers().forEach(function(transceiver) {
+          if (transceiver.stop) transceiver.stop();
+      });
+  }
+  pc.close();
+}
+
+function init(){
+  return new Promise(function(resolve) {
+    if(pc)disconnect();
+    pc = new RTCPeerConnection({ sdpSemantics: 'unified-plan'});
+    pc.addEventListener('track', function(evt) {
+        var video = document.getElementById('other_video');
+        if (video.srcObject != evt.streams[0]) {
+            video.srcObject = evt.streams[0];
+            video.play();
+        }
+    });
+    if(navigator.mediaDevices){
+      navigator.mediaDevices.getUserMedia({video: { width: 192, height: 108 },audio: true}
+      ).then(async function(localStream) {
+          document.getElementById('my_video').srcObject = localStream;
+          console.log(`getUserMedia:`,localStream);
+          localStream.getTracks().forEach(track => {
+            pc.addTrack(track, localStream)
+            console.log("add track",track);
+          });
+          resolve();
+      }).catch(error=>{
+          alert(error);
+          console.log(error);
+      });
+    }else{
+      console.log('Fail to getUserMedia, Using 127.0.0.1 or https, Refer to https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#security')
+      resolve();
+      return;
+    }
+  });
+}
+function gatheringCandidate(){
+  return new Promise(function(resolve) {
+      if (pc.iceGatheringState === 'complete') {
+          resolve();
+      } else {
+          function checkState() {
+              if (pc.iceGatheringState === 'complete') {
+                  pc.removeEventListener('icegatheringstatechange', checkState);
+                  resolve();
+              }
+          }
+          pc.addEventListener('icegatheringstatechange', checkState);
+      }
+  });
+}
+
+//  ------ begin startFromOffer ----- 
+function startFromOffer(offerSdp){
+  init().then(function(){
+    return pc.setRemoteDescription({type: 'offer',sdp: offerSdp.split('kitty').join('\r\n')})
+  }).then(function() {
+      return pc.createAnswer();
+  }).then(function(answer) {
+      return pc.setLocalDescription(answer);
+  }).then(function() {
+      return gatheringCandidate()
+  }).then(function() {
+      fetch(answer_url, {
+          method: 'POST',
+          body: JSON.stringify({ "content" : pc.localDescription.sdp.split('\r\n').join('kitty')}),
+          headers: { 'Content-Type': 'application/json'}
+      }).then(res => res.text()).then(res => { console.log(res)});
+  });
+}
+//  ------ end startFromOffer ----- 
+
+//  ------ begin startWithoutOffer ----- 
+function startWithoutOffer(){
+  init().then(function(){
+    return pc.createOffer({offerToReceiveAudio: 1,offerToReceiveVideo: 1});
+  }).then(function(offer){
+    return pc.setLocalDescription(offer);
+  }).then(function() {
+    return gatheringCandidate()
+  }).then(function() {
+    fetch(offer_url, {
+        method: 'POST',
+        body: JSON.stringify({ "content" : pc.localDescription.sdp.split('\r\n').join('kitty')}),
+        headers: {'Content-Type': 'application/json'}
+    }).then(res => res.text()).then(res => { 
+      console.log(res);
+      waitForAnswer();
+    });
+  })
+}
+
+function waitForAnswer(){
+  setTimeout(function(){
+    fetch(answer_url).then(res => res.text()).then(answerSdp => {
+      console.log('waiting for answer',answerSdp)
+      if(answerSdp){
+        pc.setRemoteDescription({type: 'answer',sdp: answerSdp.split('kitty').join('\r\n')})
+      }else{
+        waitForAnswer()
+      }
+    }).catch(error=>{
+      waitForAnswer()
+    });
+  },1000);
+}
+//  ------ end startWithoutOffer ----- 
+</script>
+</html>

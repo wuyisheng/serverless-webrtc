@@ -1,2 +1,7 @@
-# serverless-webrtc
-serverless webrtc
+# serverless webrtc
+
+## usage
+
+```bash
+python server.py
+```
