@@ -3,12 +3,14 @@
 
 __author__ = 'hello@yeshen.org'
 
-import subprocess,os,os.path
+import subprocess,os,os.path,shutil
 from bottle import route, run, template, run, post, request, response, get
+
 
 @route('/')
 def index():
     return html_rtc()
+
 
 @route('/rtc/')
 def html_rtc():
@@ -16,6 +18,14 @@ def html_rtc():
     with open('index.html', 'r') as f:
         data = f.read()
     return data
+
+
+@post('/rtc/reset')
+def reset_rtc():
+    shutil.rmtree('data')
+    os.makedirs('data')
+    print 'reset: done'
+    return "done"
 
 
 @get('/rtc/<id>/<type>')

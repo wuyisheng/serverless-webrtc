@@ -13,6 +13,7 @@
 <body>
     <button onclick="connect()" tabindex="2">connect</button>
     <button onclick="disconnect()" tabindex="3">disconnect</button>
+    <button onclick="reset()" tabindex="4">reset</button>
     <div id="media">
         <video id="other_video" autoplay="true" playsinline="true"></video>
         <video id="my_video" autoplay="true" playsinline="true"></video>
@@ -22,6 +23,7 @@
 var pc;
 var offer_url = '/rtc/key/offer'
 var answer_url = '/rtc/key/answer'
+var reset_url = '/rtc/reset'
 
 function connect(){
   fetch(offer_url).then(res => res.text()).then(sdp => {
@@ -42,6 +44,9 @@ function disconnect(){
   }
   pc.close();
 }
+function reset(){
+  fetch(reset_url, {method: 'POST'}).then(res => res.text()).then(res => { alert(res)});
+}
 
 function init(){
   return new Promise(function(resolve) {
@@ -57,7 +62,9 @@ function init(){
     if(navigator.mediaDevices){
       navigator.mediaDevices.getUserMedia({video: { width: 192, height: 108 },audio: true}
       ).then(async function(localStream) {
-          document.getElementById('my_video').srcObject = localStream;
+          var video = document.getElementById('my_video');
+          video.srcObject = localStream;
+          video.muted = true;
           console.log(`getUserMedia:`,localStream);
           localStream.getTracks().forEach(track => {
             pc.addTrack(track, localStream)
